@@ -4,11 +4,8 @@
 # Note the extra `/` after the protocol is required for the shorthand
 # notation.
 include "root" {
-  path = find_in_parent_folders("../terragrunt.hcl")
-  expose = true
-  merge_strategy = "deep"
+  path = find_in_parent_folders()
 }
-
 
 
 

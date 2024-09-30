@@ -1,142 +1,201 @@
-#aws provider with the assumption role
+#main calling function
+data "aws_partition" "current" {}
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
-provider "aws" {
-  region = "eu-west-2"
-  alias = "logarchive"
-  assume_role {
-    role_arn = "arn:aws:iam::890742580474:role/OrganizationAccountAccessRole"
-    external_id = "cross_account_terragrunt"
-  }
+# local values of core_aws_accounts
+locals {
+  aws_account_ids = toset([
+    "288761729658",#management
+    "676206902400",#audit
+    "890742580474",#logarchive
+  ])
 }
 
 
+module "core_config_s3_audit" {
+  providers = {
+      aws = aws.audit
+    }
+  source = "./core_s3_bucket_config"
+  access_log_s3_bucket = module.create_core_s3_logarchive.central_accesslogs_bucket_id
 
-#S3 bucket for config logs with policy attached for config service
+}
 
-resource "aws_s3_bucket" "config_bucket" {
-  provider = aws.logarchive
-  bucket_prefix = "aws-config-logs"
-  force_destroy = true
-  /*lifecycle {
-    prevent_destroy = true
+module "create_core_s3_logarchive" {
+    providers = {
+      aws = aws.audit
+      
+    }
+  source = "./core_s3_buckets_logarchive"
+  central-config-history = module.core_config_s3_audit.central_config_bucket_id
+   
   }
-  */
+
   
-}
 
-/*
-resource "aws_s3_bucket_ownership_controls" "example" {
-  bucket = aws_s3_bucket.config_bucket.id
-  rule {
-    object_ownership = "BucketOwnerPreferred"
+  module "create_core_s3_config_aggregator" {
+    providers = {
+      aws = aws.audit
+    }
+    source = "./core_config_Org_Aggregator_setup"
+    #Variables to receive from the main calling module
+      central_config_bucket_id = module.core_config_s3_audit.central_config_bucket_id
+
+      central_config_bucket_arn = module.core_config_s3_audit.central_config_bucket_arn
+
+      central_config_bucket_name = module.core_config_s3_audit.central_config_bucket_name
+
+         
   }
+
+  
+  module "create_organisation_trail" {
+    source = "./core_cloudtrail_setup"
+    #Variables to receive from the main calling module
+      cloudtrail_log_s3_bucket = module.create_core_s3_logarchive.central_cloudtrail_bucket_id      
+  }
+  
+
+  module "create_config_new_account" {
+    source = "./new_account_config_setup"
+    #Variables to receive from the main calling module
+    central_config_bucket_id = module.core_config_s3_audit.central_config_bucket_id
+
+    central_config_bucket_arn = module.core_config_s3_audit.central_config_bucket_arn
+
+    central_config_bucket_name = module.core_config_s3_audit.central_config_bucket_name
+         
 }
 
-resource "aws_s3_bucket_public_access_block" "example" {
-  bucket = aws_s3_bucket.config_bucket.id
-
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
-}
-
-resource "aws_s3_bucket_acl" "example" {
-  depends_on = [
-    aws_s3_bucket_ownership_controls.example,
-    aws_s3_bucket_public_access_block.example,
-  ]
-
-  bucket = aws_s3_bucket.config_bucket.id
-  acl    ="log-delivery-write"
-}
-
-*/
-
-
-
-/*
-resource "aws_s3_bucket_public_access_block" "config" {
-  bucket = aws_s3_bucket.config_bucket.id
-  depends_on = [aws_s3_bucket.config_bucket, ]
-  provider = aws.logarchive
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-*/
-
-/*
-
-# Export the S3 bucket name
-output "logging_bucket_name" {
-  value = "${aws_s3_bucket.logging_bucket.id}"
-}
-
-output "bucket-arn" {
-  value = "${aws_s3_bucket.logging_bucket.arn}"
-}
-
-
-resource "aws_s3_bucket_policy" "allow_config_access_from_another_account" {
-  bucket = aws_s3_bucket.config_bucket.id
-  #policy = data.aws_iam_policy_document.allow_config_access_from_another_account.json
-  provider = aws.logarchive
-
-  policy = jsonencode (
-    
+locals {
+  guardduty_features = {
+  s3 = {
+    auto_enable = "ALL"
+    name        = "S3_DATA_EVENTS"
+  }
+  eks = {
+    auto_enable = "NONE"
+    name        = "EKS_AUDIT_LOGS"
+  }
+  eks_runtime_monitoring = {
+    # EKS_RUNTIME_MONITORING is deprecated and should thus be explicitly disabled
+    auto_enable = "NONE"
+    name        = "EKS_RUNTIME_MONITORING"
+    additional_configuration = [
       {
-        "Version": "2012-10-17",
-        "Statement": [
-
-            {
-              "Sid": "config_bucket_policy",
-              "Action": [
-                "s3:GetObject",
-                "s3:ListBucket",
-                "s3:PutObject",
-                "s3:GetObjectACL"                
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                aws_s3_bucket.config_bucket.arn,
-                "${aws_s3_bucket.config_bucket.arn}/*"
-              ]
-             "Condition": {
-                "StringEquals": {
-                  "aws:PrincipalOrgID": "o-4jsdkwq1yx"
-                }
-              },
-              "Principal": {
-                "Service": [
-                  "config.amazonaws.com"
-                ],
-                "AWS": [
-                  "arn:aws:iam::288761729658:role/core-config-org-config", 
-                  "arn:aws:iam::288761729658:role/core-config-org-aggregator-config"
-
-              ]
-              }
-            }
-        ]
-
-       
-
+        auto_enable = "NONE"
+        name        = "EKS_ADDON_MANAGEMENT"
+      },
+    ]
+  }
+  runtime_monitoring = {
+    auto_enable = "NONE"
+    name        = "RUNTIME_MONITORING"
+    additional_configuration = [
+      {
+        auto_enable = "NONE"
+        name        = "EKS_ADDON_MANAGEMENT"
+      },
+      {
+        auto_enable = "NONE"
+        name        = "ECS_FARGATE_AGENT_MANAGEMENT"
+      },
+      {
+        auto_enable = "NONE"
+        name        = "EC2_AGENT_MANAGEMENT"
       }
-       
-      
-        
-      
+    ]
+  }
+  malware = {
+    auto_enable = "NONE"
+    name        = "EBS_MALWARE_PROTECTION"
+  }
+  rds = {
+    auto_enable = "NONE"
+    name        = "RDS_LOGIN_EVENTS"
+  }
+  lambda = {
+    auto_enable = "NONE"
+    name        = "LAMBDA_NETWORK_LOGS"
+  }
+}
 
-  )
+}
 
-  
+data "aws_caller_identity" "audit" {
+  provider = aws.audit
+}
 
+
+resource "aws_guardduty_detector" "audit" {
+  provider = aws.audit
+}
+
+resource "aws_guardduty_organization_admin_account" "this" {
+  #provider         = aws.management
+  admin_account_id = data.aws_caller_identity.audit.account_id
+  depends_on       = [aws_guardduty_detector.audit]
+}
+
+resource "aws_guardduty_organization_configuration" "this" {
+  provider                         = aws.audit
+  auto_enable_organization_members = "ALL"
+  detector_id                      = aws_guardduty_detector.audit.id
+  depends_on                       = [aws_guardduty_organization_admin_account.this]
+}
+
+resource "aws_guardduty_organization_configuration_feature" "this" {
+  provider    = aws.audit
+  for_each    = local.guardduty_features
+  auto_enable = each.value.auto_enable
+  detector_id = aws_guardduty_detector.audit.id
+  name        = each.value.name
+  dynamic "additional_configuration" {
+    for_each = try(each.value.additional_configuration, [])
+    content {
+      auto_enable = additional_configuration.value.auto_enable
+      name        = additional_configuration.value.name
+    }
+  }
+  depends_on = [aws_guardduty_organization_admin_account.this]
+}
+
+
+resource "aws_guardduty_detector_feature" "audit" {
+  provider    = aws.audit
+  for_each    = local.guardduty_features
+  detector_id = aws_guardduty_detector.audit.id
+  name        = each.value.name
+  status      = each.value.auto_enable == "NONE" ? "DISABLED" : "ENABLED"
+  dynamic "additional_configuration" {
+    for_each = try(each.value.additional_configuration, [])
+    content {
+      status = additional_configuration.value.auto_enable == "NONE" ? "DISABLED" : "ENABLED"
+      name   = additional_configuration.value.name
+    }
+  }
 }
 
 
 
+/*
+
+module "create_GD_org_Detector" {
+  providers = {
+      aws = aws.audit
+    }
+  source = "./enable_GuardDuty_Org"
+  central-guardduty-findings-s3bucket = module.create_core_s3_logarchive.central_cloudtrail_bucket_id  
+}
 */
+
+
+
+
+
+
+
+
+  
 

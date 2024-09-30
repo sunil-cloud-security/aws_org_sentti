@@ -5,13 +5,14 @@ resource "aws_organizations_organization" "new-org" {
   aws_service_access_principals = [
     "cloudtrail.amazonaws.com",
     "config.amazonaws.com",
+    "config-multiaccountsetup.amazonaws.com",
     "account.amazonaws.com",
     "member.org.stacksets.cloudformation.amazonaws.com",
     "controltower.amazonaws.com",
-    "guardduty.amazonaws.com",
+    #"guardduty.amazonaws.com",
     "health.amazonaws.com",
     "inspector2.amazonaws.com",
-    "securityhub.amazonaws.com",
+    #"securityhub.amazonaws.com",
     "servicecatalog.amazonaws.com",
     "sso.amazonaws.com",
     "ssm.amazonaws.com",
@@ -25,3 +26,6 @@ resource "aws_organizations_organization" "new-org" {
   
   feature_set = "ALL"
 }
+
+
+
