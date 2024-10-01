@@ -28,4 +28,5 @@ module "aws-scp-terraform-module" {
   deny_vpc_changes             = true
   deny_config_changes          = true
   deny_cloudtrail_changes      = true
+  disable_securityhub_changes  = true
 }

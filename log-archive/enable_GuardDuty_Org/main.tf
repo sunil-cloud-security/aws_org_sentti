@@ -3,13 +3,13 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_guardduty_detector" "existing" {}
 
-
+/*
 module "delegated_admin" {
   source = "../../modules/terraform-aws-guardduty/modules/organizations_admin"
   auto_enable_org_config = true
   admin_account_id                 = data.aws_caller_identity.current.account_id
   auto_enable_organization_members = "ALL"
-  guardduty_detector_id            = data.aws module.guardduty_detector.guardduty_detector.id
+  guardduty_detector_id            = data.aws_guardduty_detector.existing
   enable_s3_protection         = false
   enable_kubernetes_protection = false
   enable_malware_protection    = false
@@ -34,6 +34,8 @@ module "guardduty_detector" {
     Owner = "AWS Security Team"
   }
 }
+
+*/
 
 
   

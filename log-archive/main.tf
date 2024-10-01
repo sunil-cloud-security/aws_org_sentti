@@ -177,6 +177,8 @@ resource "aws_guardduty_detector_feature" "audit" {
   }
 }
 
+*/
+
 
 
 /*
