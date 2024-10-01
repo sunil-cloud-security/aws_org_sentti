@@ -8,3 +8,4 @@ provider.tf
 
 # Terragrunt
 .terragrunt-cache
+modules/aws-scp-terraform-module
